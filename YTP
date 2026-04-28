@@ -17,39 +17,39 @@ local TeleportService = game:GetService("TeleportService")
 local RS = game:GetService("RunService")
 local camera = workspace.CurrentCamera
 
--- [[ 2. RETRY-ENABLED MENU BYPASS ]]
+-- [[ 2. AGGRESSIVE MENU BYPASS ]]
 local function clearMenus()
-    -- Force delete leftovers from autoexec
     if pGui:FindFirstChild("Buckshot") then pGui.Buckshot:Destroy() end
     
-    print("F9 LOG: Searching for TitleScreen...")
-    local attempts = 0
-    local clicked = false
+    print("F9 LOG: Engaging Menu Bypass...")
     
-    while not clicked and attempts < 30 do
-        local title = pGui:FindFirstChild("TitleScreen")
-        local btn = title and title:FindFirstChild("PlayButton")
+    local title = pGui:WaitForChild("TitleScreen", 20)
+    local btn = title and title:FindFirstChild("PlayButton")
+    
+    if btn then
+        local pos = btn.AbsolutePosition
+        local size = btn.AbsoluteSize
+        local clickX, clickY = pos.X + (size.X/2), pos.Y + (size.Y/2) + 36
         
-        if btn and btn.Visible then
-            local pos = btn.AbsolutePosition
-            local size = btn.AbsoluteSize
-            -- Center click + TopBar offset for Fullscreen
-            VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, true, game, 1)
+        -- KEEP CLICKING UNTIL THE MENU IS GONE
+        local clickTimeout = tick()
+        repeat
+            VIM:SendMouseButtonEvent(clickX, clickY, 0, true, game, 1)
             task.wait(0.05)
-            VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, false, game, 1)
+            VIM:SendMouseButtonEvent(clickX, clickY, 0, false, game, 1)
             
-            print("F9 LOG: PlayButton clicked.")
-            clicked = true
-        else
-            attempts = attempts + 1
-            task.wait(1) -- Wait 1 second before checking again
-        end
+            print("F9 LOG: Clicking PlayButton... (Waiting for UI to clear)")
+            task.wait(0.5) -- Half-second intervals to allow for load lag
+        until not title.Parent or not btn.Visible or (tick() - clickTimeout) > 10
+        
+        print("F9 LOG: Menu cleared. Waiting for character physics...")
+        task.wait(3) -- Extra buffer to let the screen fade out completely
     end
 end
 
 -- [[ 3. TURBO SERVER HOP ]]
 local function serverHop()
-    print("F9 LOG: Cycle complete. Hopping...")
+    print("F9 LOG: Map clear. Hopping to new server...")
     local success, result = pcall(function()
         return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
     end)
@@ -74,7 +74,7 @@ local function runTurbo()
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:WaitForChild("HumanoidRootPart", 20)
     
-    task.wait(5) -- Buffer to prevent 'cooldown missing' errors
+    task.wait(2) -- Final sync buffer
 
     local items = {}
     for _, v in pairs(workspace:GetDescendants()) do

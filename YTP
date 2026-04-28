@@ -19,7 +19,6 @@ local camera = workspace.CurrentCamera
 
 -- [[ 2. TURBO SERVER HOP ]]
 local function serverHop()
-    print("F9 LOG: Target list empty or stalled. Hopping...")
     local success, result = pcall(function()
         return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
     end)
@@ -37,7 +36,7 @@ local function serverHop()
     end
 end
 
--- [[ 3. MENU HAMMER ]]
+-- [[ 3. MENU BYPASS ]]
 local function clearMenus()
     local title = pGui:WaitForChild("TitleScreen", 25)
     while title and title.Parent == pGui do
@@ -45,7 +44,6 @@ local function clearMenus()
         if btn and btn.Visible then
             local pos = btn.AbsolutePosition
             local size = btn.AbsoluteSize
-            -- Click Left Mouse on Play Button
             VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, true, game, 1)
             task.wait(0.05)
             VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, false, game, 1)
@@ -55,14 +53,14 @@ local function clearMenus()
     task.wait(1.5) 
 end
 
--- [[ 4. THE ENGINE ]]
+-- [[ 4. THE PRECISION SWEEP ]]
 local function runTurbo()
     clearMenus()
 
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:WaitForChild("HumanoidRootPart", 20)
     
-    -- ANTI-STALL WATCHDOG
+    -- ANTI-STALL WATCHDOG: 3s Stand-still = Hop
     local lastPos = root.Position
     local lastActionTick = tick()
     
@@ -70,22 +68,19 @@ local function runTurbo()
         while task.wait(0.5) do
             if not root or not root.Parent then break end
             local currentPos = root.Position
-            local dist = (currentPos - lastPos).Magnitude
+            local dist = (Vector3.new(currentPos.X, 0, currentPos.Z) - Vector3.new(lastPos.X, 0, lastPos.Z)).Magnitude
             
             if dist > 0.5 then
                 lastPos = currentPos
                 lastActionTick = tick()
-            end
-
-            if (tick() - lastActionTick) > 3 then
-                warn("F9 WARNING: 3s Stall/Stationary. Hopping.")
-                serverHop()
+            elseif (tick() - lastActionTick) > 3 then
+                serverHop() -- Force hop if stuck for 3 seconds
                 break
             end
         end
     end)
 
-    -- MAP SCAN
+    -- GET ALL TARGETS
     local items = {}
     for _, v in pairs(workspace:GetDescendants()) do
         if (v.Name:find("YTP") or v.Name:find("YTP_")) and (v:IsA("Model") or v:IsA("BasePart")) then
@@ -95,48 +90,41 @@ local function runTurbo()
 
     if #items == 0 then serverHop() return end
 
-    -- COLLECTION LOOP
+    -- COLLECTION SEQUENCE
     for _, item in ipairs(items) do
-        local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
+        local target = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
         
-        if hitbox and hitbox.Parent and player.Character and root then
-            -- Reset stall timer for new target
-            lastActionTick = tick() 
-            
-            -- Teleport & Anchor
-            root.CFrame = hitbox.CFrame * CFrame.new(0, 0, 2.2) 
+        if target and target.Parent and player.Character and root then
+            -- 1. CFRAME SNAP AIM-ASSIST
+            root.CFrame = target.CFrame * CFrame.new(0, 0, 2.2)
             root.Anchored = true
             
-            -- Lock Camera (Aim Assist)
-            local camLock = RS.RenderStepped:Connect(function()
-                if hitbox and hitbox.Parent then
-                    camera.CFrame = CFrame.lookAt(camera.CFrame.Position, hitbox.Position)
-                end
-            end)
+            -- Force character and camera to lock onto target center
+            root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
+            camera.CFrame = CFrame.new(camera.CFrame.Position, target.Position)
             
             task.wait(0.1) -- Focus buffer
             
-            -- THE 10-CLICK LEFT MOUSE LOOP
+            -- 2. THE 10-CLICK LEFT MOUSE LOOP
             for i = 1, 10 do
                 if not item.Parent then break end
                 
-                -- Direct ClickDetector Fire
+                -- ClickDetector (Direct)
                 fireclickdetector(item:FindFirstChildWhichIsA("ClickDetector", true))
                 
-                -- Virtual Left Mouse Click (Button 0)
+                -- Left Mouse Click (Screen Center)
                 local center = camera.ViewportSize / 2
-                VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, true, game, 1) -- Press Left
+                VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, true, game, 1)
                 task.wait(0.01)
-                VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, false, game, 1) -- Release Left
+                VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, false, game, 1)
                 
-                -- Interaction Key
+                -- E Key Press
                 VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
                 task.wait(0.04)
             end
             
-            camLock:Disconnect()
             root.Anchored = false
-            lastPos = root.Position
+            lastActionTick = tick() -- Reset stall timer after successful collection
             task.wait(0.05)
         end
     end

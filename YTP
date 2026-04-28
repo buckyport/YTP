@@ -1,15 +1,14 @@
--- [[ 1. THE PERSISTENCE ENGINE (LINKED TO GITHUB) ]]
+-- [[ 1. THE PERSISTENCE ENGINE ]]
 local raw_url = "https://raw.githubusercontent.com/buckyport/YTP/refs/heads/main/YTP"
 local queue_on_teleport = (queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport))
 
--- This ensures that upon every teleport, the executor re-downloads your GitHub script
 if queue_on_teleport then
     pcall(function()
         queue_on_teleport('loadstring(game:HttpGet("' .. raw_url .. '"))()')
     end)
 end
 
-if not game:IsLoaded() then game.Loaded:Wait() end
+repeat task.wait() until game:IsLoaded()
 
 local player = game.Players.LocalPlayer
 local pGui = player:WaitForChild("PlayerGui")
@@ -18,25 +17,39 @@ local TeleportService = game:GetService("TeleportService")
 local RS = game:GetService("RunService")
 local camera = workspace.CurrentCamera
 
--- [[ 2. MENU BYPASS ]]
+-- [[ 2. RETRY-ENABLED MENU BYPASS ]]
 local function clearMenus()
-    local title = pGui:WaitForChild("TitleScreen", 15)
-    if title then
-        local btn = title:FindFirstChild("PlayButton")
-        if btn and btn:IsA("ImageButton") then
+    -- Force delete leftovers from autoexec
+    if pGui:FindFirstChild("Buckshot") then pGui.Buckshot:Destroy() end
+    
+    print("F9 LOG: Searching for TitleScreen...")
+    local attempts = 0
+    local clicked = false
+    
+    while not clicked and attempts < 30 do
+        local title = pGui:FindFirstChild("TitleScreen")
+        local btn = title and title:FindFirstChild("PlayButton")
+        
+        if btn and btn.Visible then
             local pos = btn.AbsolutePosition
             local size = btn.AbsoluteSize
-            -- Direct coordinate click to bypass menu
+            -- Center click + TopBar offset for Fullscreen
             VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, true, game, 1)
             task.wait(0.05)
             VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, false, game, 1)
+            
+            print("F9 LOG: PlayButton clicked.")
+            clicked = true
+        else
+            attempts = attempts + 1
+            task.wait(1) -- Wait 1 second before checking again
         end
     end
 end
 
 -- [[ 3. TURBO SERVER HOP ]]
 local function serverHop()
-    print("F9 LOG: Map cleared. Fetching next server...")
+    print("F9 LOG: Cycle complete. Hopping...")
     local success, result = pcall(function()
         return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
     end)
@@ -54,16 +67,15 @@ local function serverHop()
     end
 end
 
--- [[ 4. FULL-MAP PRECISION SWEEP ]]
+-- [[ 4. THE CLEAN SWEEP ENGINE ]]
 local function runTurbo()
     clearMenus()
 
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:WaitForChild("HumanoidRootPart", 20)
     
-    task.wait(5) -- Buffer for data sync
+    task.wait(5) -- Buffer to prevent 'cooldown missing' errors
 
-    -- SCAN FOR ALL YTP
     local items = {}
     for _, v in pairs(workspace:GetDescendants()) do
         if (v.Name:find("YTP") or v.Name:find("YTP_")) and (v:IsA("Model") or v:IsA("BasePart")) then
@@ -71,57 +83,39 @@ local function runTurbo()
         end
     end
 
-    -- If the map is empty, hop immediately
-    if #items == 0 then
-        serverHop()
-        return
-    end
+    if #items == 0 then serverHop() return end
 
-    print("F9 LOG: Sweeping " .. #items .. " items.")
-
-    -- COLLECTION LOOP
     for _, item in ipairs(items) do
         local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
         
         if hitbox and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
             local hrp = player.Character.HumanoidRootPart
-            
-            -- Teleport & Anchor for stability
             hrp.CFrame = hitbox.CFrame * CFrame.new(0, 0, 2.5) 
             hrp.Anchored = true
             
-            -- FULLSCREEN AIM LOCK: Glue camera to the center of the item
             local camLock = RS.RenderStepped:Connect(function()
                 if hitbox and hitbox.Parent then
                     camera.CFrame = CFrame.lookAt(camera.CFrame.Position, hitbox.Position)
                 end
             end)
             
-            -- INTERACTION: Multi-Input Click + E
             local clickStart = tick()
             while item.Parent and (tick() - clickStart) < 1.5 do
-                -- Click Detector
                 local cd = item:FindFirstChildWhichIsA("ClickDetector", true)
                 if cd then fireclickdetector(cd) end
                 
-                -- Viewport Click (Centered for Fullscreen)
                 local center = camera.ViewportSize / 2
                 VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, true, game, 1)
                 task.wait(0.01)
                 VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, false, game, 1)
                 
-                -- Key Interaction (E)
                 VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
                 task.wait(0.05)
             end
-            
             camLock:Disconnect()
             hrp.Anchored = false
-            task.wait(0.1)
         end
     end
-
-    -- Server hop after sweeping the entire list
     serverHop()
 end
 

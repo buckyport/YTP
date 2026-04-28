@@ -4,6 +4,7 @@ local queue_on_teleport = (queue_on_teleport or (syn and syn.queue_on_teleport) 
 
 if queue_on_teleport then
     pcall(function()
+        -- Queues this exact script to run again on the next server
         queue_on_teleport('loadstring(game:HttpGet("' .. raw_url .. '"))()')
     end)
 end
@@ -20,27 +21,35 @@ local camera = workspace.CurrentCamera
 -- [[ 2. INFINITE CLICK CHECK (Menu Bypass) ]]
 local function clearMenus()
     print("F9 LOG: Starting Menu Presence Check...")
+    
     local title = pGui:WaitForChild("TitleScreen", 25)
+    
+    -- Keep checking/clicking until TitleScreen is no longer a child of PlayerGui
     while title and title.Parent == pGui do
         local btn = title:FindFirstChild("PlayButton")
+        
         if btn and btn.Visible then
             local pos = btn.AbsolutePosition
             local size = btn.AbsoluteSize
             local clickX, clickY = pos.X + (size.X/2), pos.Y + (size.Y/2) + 36
+            
+            -- Press and release
             VIM:SendMouseButtonEvent(clickX, clickY, 0, true, game, 1)
             task.wait(0.05)
             VIM:SendMouseButtonEvent(clickX, clickY, 0, false, game, 1)
+            
             print("F9 LOG: PlayButton detected and clicked. Checking for menu removal...")
         end
-        task.wait(0.5)
+        
+        task.wait(0.3) -- Faster menu polling
     end
+    
     print("F9 LOG: Menu cleared from screen. Transitioning to game...")
-    task.wait(2)
 end
 
 -- [[ 3. TURBO SERVER HOP ]]
 local function serverHop()
-    print("F9 LOG: Sweep finished or stall detected. Hopping...")
+    print("F9 LOG: Sweep finished. Hopping...")
     local success, result = pcall(function()
         return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
     end)
@@ -60,32 +69,14 @@ end
 
 -- [[ 4. THE CLEAN SWEEP ENGINE ]]
 local function runTurbo()
+    -- Step 1: Hammer the Play button until it's gone
     clearMenus()
 
+    -- Step 2: Ensure character is physically spawned (Immediate check)
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:WaitForChild("HumanoidRootPart", 20)
-    task.wait(2) 
 
-    -- [[ ADDED: ANTI-STALL WATCHDOG ]]
-    local lastPos = root.Position
-    local lastActionTick = tick()
-    
-    task.spawn(function()
-        while task.wait(1) do
-            if not root or not root.Parent then break end
-            local dist = (root.Position - lastPos).Magnitude
-            if dist > 0.5 then
-                lastPos = root.Position
-                lastActionTick = tick()
-            elseif (tick() - lastActionTick) > 3 then
-                warn("F9 WARNING: Standing still for 3s. Force Hopping.")
-                serverHop()
-                break
-            end
-        end
-    end)
-
-    -- Scan and Collect
+    -- Step 3: Scan and Collect
     local items = {}
     for _, v in pairs(workspace:GetDescendants()) do
         if (v.Name:find("YTP") or v.Name:find("YTP_")) and (v:IsA("Model") or v:IsA("BasePart")) then
@@ -93,12 +84,7 @@ local function runTurbo()
         end
     end
 
-    -- [[ MODIFIED: INSTANT HOP IF NO YTP ]]
-    if #items == 0 then 
-        print("F9 LOG: No YTP found in server. Hopping immediately.")
-        serverHop() 
-        return 
-    end
+    if #items == 0 then serverHop() return end
 
     for _, item in ipairs(items) do
         local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
@@ -129,12 +115,10 @@ local function runTurbo()
             end
             camLock:Disconnect()
             hrp.Anchored = false
-            -- Reset position tracking after movement
-            lastPos = hrp.Position
-            lastActionTick = tick()
         end
     end
     
+    -- Step 4: Loop back to a new server
     serverHop()
 end
 

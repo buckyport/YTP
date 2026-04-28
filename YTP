@@ -19,7 +19,7 @@ local camera = workspace.CurrentCamera
 
 -- [[ 2. TURBO SERVER HOP ]]
 local function serverHop()
-    print("F9 LOG: Cycling to new server...")
+    print("F9 LOG: Sweep complete or stall detected. Hopping.")
     local success, result = pcall(function()
         return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
     end)
@@ -45,7 +45,6 @@ local function clearMenus()
         if btn and btn.Visible then
             local pos = btn.AbsolutePosition
             local size = btn.AbsoluteSize
-            -- Direct coordinate click for the Play button
             VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, true, game, 1)
             task.wait(0.05)
             VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, false, game, 1)
@@ -55,14 +54,14 @@ local function clearMenus()
     task.wait(1.5) 
 end
 
--- [[ 4. THE PRECISION CLICK ENGINE ]]
+-- [[ 4. THE FULL SWEEP & CLICK ENGINE ]]
 local function runTurbo()
     clearMenus()
 
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:WaitForChild("HumanoidRootPart", 20)
     
-    -- ANTI-STALL WATCHDOG: 3 Seconds Still = Hop
+    -- ANTI-STALL WATCHDOG: 3s Still = Hop
     local lastPos = root.Position
     local lastMoveTick = tick()
     
@@ -76,14 +75,13 @@ local function runTurbo()
                 lastPos = currentPos
                 lastMoveTick = tick()
             elseif (tick() - lastMoveTick) >= 3 then
-                warn("F9 WARNING: Stalled. Hopping.")
                 serverHop()
                 break
             end
         end
     end)
 
-    -- MAP SCAN
+    -- 1. IDENTIFY ALL TARGETS ON MAP
     local items = {}
     for _, v in pairs(workspace:GetDescendants()) do
         if (v.Name:find("YTP") or v.Name:find("YTP_")) and (v:IsA("Model") or v:IsA("BasePart")) then
@@ -93,43 +91,44 @@ local function runTurbo()
 
     if #items == 0 then serverHop() return end
 
-    -- COLLECTION
+    -- 2. ITERATE AND COLLECT ALL
     for _, item in ipairs(items) do
         local targetPart = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
         
         if targetPart and targetPart.Parent and player.Character and root then
-            -- 1. SNAP ALIGNMENT (Guarantees the "Center Click" hits)
+            -- PRECISION ALIGNMENT
             root.CFrame = targetPart.CFrame * CFrame.new(0, 0, 2.2)
             root.Anchored = true
             
-            -- Snap camera and character to look directly at target
+            -- HARD AIM ASSIST SNAP
             camera.CFrame = CFrame.new(camera.CFrame.Position, targetPart.Position)
             root.CFrame = CFrame.new(root.Position, Vector3.new(targetPart.Position.X, root.Position.Y, targetPart.Position.Z))
             
-            task.wait(0.1) -- Quick focus delay
+            task.wait(0.15) -- Focus buffer to ensure click lands
             
-            -- 2. AGGRESSIVE CLICK & INTERACT
+            -- AGGRESSIVE INTERACTION WINDOW
             local clickStart = tick()
-            while item.Parent and (tick() - clickStart) < 0.8 do
-                -- Trigger ClickDetector directly
+            while item.Parent and (tick() - clickStart) < 1.0 do
+                -- Direct Script Interaction
                 fireclickdetector(item:FindFirstChildWhichIsA("ClickDetector", true))
                 
-                -- Trigger Screen-Center Click (using VIM)
+                -- Virtual Input Mouse Click (Center Viewport)
                 local center = camera.ViewportSize / 2
                 VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, true, game, 1)
                 task.wait(0.01)
                 VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, false, game, 1)
                 
-                -- Trigger Proximity Key
+                -- Virtual Input Key Interaction
                 VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                task.wait(0.03) 
+                task.wait(0.04) 
             end
             
             root.Anchored = false
-            task.wait(0.05)
+            task.wait(0.05) -- Minor cooldown for character sync
         end
     end
     
+    -- 3. FINAL HOP AFTER ALL ITEMS IN LIST ARE PROCESSED
     serverHop()
 end
 

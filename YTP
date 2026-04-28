@@ -4,11 +4,11 @@ local queue_on_teleport = (queue_on_teleport or (syn and syn.queue_on_teleport) 
 
 if queue_on_teleport then
     pcall(function()
+        -- Queues this exact script to run again on the next server
         queue_on_teleport('loadstring(game:HttpGet("' .. raw_url .. '"))()')
     end)
 end
 
--- Wait for the engine to actually put you in a server
 if not game:IsLoaded() then game.Loaded:Wait() end
 
 local player = game.Players.LocalPlayer
@@ -18,41 +18,39 @@ local TeleportService = game:GetService("TeleportService")
 local RS = game:GetService("RunService")
 local camera = workspace.CurrentCamera
 
--- [[ 2. THE MENU-GATE BYPASS ]]
+-- [[ 2. INFINITE CLICK CHECK (Menu Bypass) ]]
 local function clearMenus()
-    print("F9 LOG: Attempting Menu Bypass...")
+    print("F9 LOG: Starting Menu Presence Check...")
     
-    -- 1. Ensure the TitleScreen is actually there before trying anything
-    local title = pGui:WaitForChild("TitleScreen", 30)
-    local btn = title and title:FindFirstChild("PlayButton")
+    local title = pGui:WaitForChild("TitleScreen", 25)
     
-    if title and btn then
-        local pos = btn.AbsolutePosition
-        local size = btn.AbsoluteSize
-        local clickX, clickY = pos.X + (size.X/2), pos.Y + (size.Y/2) + 36
+    -- Keep checking/clicking until TitleScreen is no longer a child of PlayerGui
+    while title and title.Parent == pGui do
+        local btn = title:FindFirstChild("PlayButton")
         
-        -- 2. AGGRESSIVE CLICKING: Keep clicking until the button is no longer visible
-        local clickTimeout = tick()
-        while btn.Visible and (tick() - clickTimeout) < 15 do
+        if btn and btn.Visible then
+            local pos = btn.AbsolutePosition
+            local size = btn.AbsoluteSize
+            local clickX, clickY = pos.X + (size.X/2), pos.Y + (size.Y/2) + 36
+            
+            -- Press and release
             VIM:SendMouseButtonEvent(clickX, clickY, 0, true, game, 1)
             task.wait(0.05)
             VIM:SendMouseButtonEvent(clickX, clickY, 0, false, game, 1)
             
-            print("F9 LOG: Clicking Play... waiting for menu to disappear.")
-            task.wait(0.5) 
+            print("F9 LOG: PlayButton detected and clicked. Checking for menu removal...")
         end
         
-        -- 3. THE "STUCK" CHECK: Wait specifically for the TitleScreen to be gone
-        local uiClearWait = tick()
-        while title.Parent == pGui and (tick() - uiClearWait) < 10 do
-            task.wait(0.5)
-            print("F9 LOG: Menu still mounted. Waiting...")
-        end
+        task.wait(0.5) -- Check every half-second to prevent crashing
     end
+    
+    print("F9 LOG: Menu cleared from screen. Transitioning to game...")
+    task.wait(2) -- Buffer for character physics to stabilize
 end
 
 -- [[ 3. TURBO SERVER HOP ]]
 local function serverHop()
+    print("F9 LOG: Sweep finished. Hopping...")
     local success, result = pcall(function()
         return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
     end)
@@ -72,18 +70,15 @@ end
 
 -- [[ 4. THE CLEAN SWEEP ENGINE ]]
 local function runTurbo()
-    -- BLOCK 1: Clear Menu
+    -- Step 1: Hammer the Play button until it's gone
     clearMenus()
 
-    -- BLOCK 2: Wait for Character + Physics stability
-    print("F9 LOG: Waiting for physical spawn...")
+    -- Step 2: Ensure character is physically spawned
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:WaitForChild("HumanoidRootPart", 20)
-    
-    -- Extra 3 seconds to ensure the game has finished loading the map and character type
-    task.wait(3) 
+    task.wait(2) 
 
-    print("F9 LOG: Physics synced. Scanning for YTP...")
+    -- Step 3: Scan and Collect
     local items = {}
     for _, v in pairs(workspace:GetDescendants()) do
         if (v.Name:find("YTP") or v.Name:find("YTP_")) and (v:IsA("Model") or v:IsA("BasePart")) then
@@ -91,13 +86,8 @@ local function runTurbo()
         end
     end
 
-    if #items == 0 then 
-        print("F9 LOG: Server empty. Hopping.")
-        serverHop() 
-        return 
-    end
+    if #items == 0 then serverHop() return end
 
-    -- BLOCK 3: Collection
     for _, item in ipairs(items) do
         local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
         
@@ -130,6 +120,7 @@ local function runTurbo()
         end
     end
     
+    -- Step 4: Loop back to a new server
     serverHop()
 end
 

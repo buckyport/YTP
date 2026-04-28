@@ -1,3 +1,8 @@
+-- [[ 1. THE PERSISTENCE ENGINE (LINKED TO GITHUB) ]]
+local raw_url = "https://raw.githubusercontent.com/buckyport/YTP/refs/heads/main/YTP"
+local queue_on_teleport = (queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport))
+
+-- This ensures that upon every teleport, the executor re-downloads your GitHub script
 if queue_on_teleport then
     pcall(function()
         queue_on_teleport('loadstring(game:HttpGet("' .. raw_url .. '"))()')

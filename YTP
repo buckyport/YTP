@@ -49,7 +49,7 @@ end
 
 -- [[ 3. TURBO SERVER HOP ]]
 local function serverHop()
-    print("F9 LOG: Sweep finished. Hopping...")
+    print("F9 LOG: Sweep finished or timeout hit. Hopping...")
     local success, result = pcall(function()
         return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
     end)
@@ -86,11 +86,29 @@ local function runTurbo()
 
     if #items == 0 then serverHop() return end
 
+    -- Tracking for teleport frequency
+    local lastTeleportTick = tick()
+
+    -- Watchdog for teleport timeout
+    task.spawn(function()
+        while task.wait(0.5) do
+            if (tick() - lastTeleportTick) > 3 then
+                warn("F9 WARNING: No teleport for 3s. Hopping.")
+                serverHop()
+                break
+            end
+        end
+    end)
+
     for _, item in ipairs(items) do
         local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
         
         if hitbox and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
             local hrp = player.Character.HumanoidRootPart
+            
+            -- Update tick when teleporting to new item
+            lastTeleportTick = tick()
+            
             hrp.CFrame = hitbox.CFrame * CFrame.new(0, 0, 2.5) 
             hrp.Anchored = true
             

@@ -49,10 +49,10 @@ end
 
 -- [[ 3. TURBO SERVER HOP ]]
 local function serverHop()
-    print("F9 LOG: Collection complete or timeout hit. Entering 5s Hop Loop...")
+    print("F9 LOG: Collection complete or timeout hit. Entering 3s Hop Loop...")
     
-    -- LOOP: Tries to hop every 5 seconds until it works
-    while task.wait(5) do
+    -- MODIFIED: Tries to hop every 3 seconds until it works
+    while task.wait(3) do
         local success, result = pcall(function()
             return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
         end)
@@ -72,12 +72,10 @@ local function serverHop()
                     print("F9 LOG: Attempting teleport to Server: " .. target)
                     TeleportService:TeleportToPlaceInstance(game.PlaceId, target)
                 else
-                    -- Fallback attempt if no specific server is found in the list
                     TeleportService:Teleport(game.PlaceId, player)
                 end
             end
         else
-            -- API Failure Fallback
             TeleportService:Teleport(game.PlaceId, player)
         end
     end
@@ -85,22 +83,10 @@ end
 
 -- [[ 4. THE CLEAN SWEEP ENGINE ]]
 local function runTurbo()
-    -- Step 1: Hammer the Play button until it's gone
     clearMenus()
 
-    -- Step 2: Ensure character is physically spawned (Immediate check)
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:WaitForChild("HumanoidRootPart", 20)
-
-    -- Step 3: Scan and Collect
-    local items = {}
-    for _, v in pairs(workspace:GetDescendants()) do
-        if (v.Name:find("YTP") or v.Name:find("YTP_")) and (v:IsA("Model") or v:IsA("BasePart")) then
-            table.insert(items, v)
-        end
-    end
-
-    if #items == 0 then serverHop() return end
 
     -- Tracking for teleport frequency
     local lastTeleportTick = tick()
@@ -116,43 +102,67 @@ local function runTurbo()
         end
     end)
 
-    for _, item in ipairs(items) do
-        local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
-        
-        if hitbox and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = player.Character.HumanoidRootPart
-            
-            -- Update tick when teleporting to new item
-            lastTeleportTick = tick()
-            
-            hrp.CFrame = hitbox.CFrame * CFrame.new(0, 0, 2.5) 
-            hrp.Anchored = true
-            
-            local camLock = RS.RenderStepped:Connect(function()
-                if hitbox and hitbox.Parent then
-                    camera.CFrame = CFrame.lookAt(camera.CFrame.Position, hitbox.Position)
-                end
-            end)
-            
-            local clickStart = tick()
-            while item.Parent and (tick() - clickStart) < 1.5 do
-                local cd = item:FindFirstChildWhichIsA("ClickDetector", true)
-                if cd then fireclickdetector(cd) end
-                
-                local center = camera.ViewportSize / 2
-                VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, true, game, 1)
-                task.wait(0.01)
-                VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, false, game, 1)
-                
-                VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                task.wait(0.05)
+    -- MODIFIED: Added Re-check logic
+    local function performScan()
+        local found = {}
+        for _, v in pairs(workspace:GetDescendants()) do
+            if (v.Name:find("YTP") or v.Name:find("YTP_")) and (v:IsA("Model") or v:IsA("BasePart")) then
+                table.insert(found, v)
             end
-            camLock:Disconnect()
-            hrp.Anchored = false
+        end
+        return found
+    end
+
+    local items = performScan()
+    if #items == 0 then serverHop() return end
+
+    -- Main Collection Loop
+    local function collectAll(list)
+        for _, item in ipairs(list) do
+            local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
+            
+            if hitbox and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local hrp = player.Character.HumanoidRootPart
+                lastTeleportTick = tick()
+                
+                hrp.CFrame = hitbox.CFrame * CFrame.new(0, 0, 2.5) 
+                hrp.Anchored = true
+                
+                local camLock = RS.RenderStepped:Connect(function()
+                    if hitbox and hitbox.Parent then
+                        camera.CFrame = CFrame.lookAt(camera.CFrame.Position, hitbox.Position)
+                    end
+                end)
+                
+                local clickStart = tick()
+                while item.Parent and (tick() - clickStart) < 1.5 do
+                    local cd = item:FindFirstChildWhichIsA("ClickDetector", true)
+                    if cd then fireclickdetector(cd) end
+                    
+                    local center = camera.ViewportSize / 2
+                    VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, true, game, 1)
+                    task.wait(0.01)
+                    VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, false, game, 1)
+                    
+                    VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                    task.wait(0.05)
+                end
+                camLock:Disconnect()
+                hrp.Anchored = false
+            end
         end
     end
+
+    -- First pass
+    collectAll(items)
     
-    -- Step 4: Loop back to a new server
+    -- MODIFIED: Final re-check before hopping
+    task.wait(0.1)
+    local remaining = performScan()
+    if #remaining > 0 then
+        collectAll(remaining)
+    end
+    
     serverHop()
 end
 

@@ -8,128 +8,140 @@ if queue_on_teleport then
     end)
 end
 
-if not game:IsLoaded() then game.Loaded:Wait() end
+-- Wait for game load
+if not game:IsLoaded() then 
+    warn("BUCKSHOT: Waiting for game engine to load...")
+    game.Loaded:Wait() 
+end
 
 local player = game.Players.LocalPlayer
 local pGui = player:WaitForChild("PlayerGui")
 local VIM = game:GetService("VirtualInputManager")
-local TeleportService = game:GetService("TeleportService")
+local GuiService = game:GetService("GuiService")
 local RS = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
 local camera = workspace.CurrentCamera
 
--- [[ 2. TURBO SERVER HOP ]]
-local function serverHop()
-    print("F9 LOG: No items found or stalled. Finding new server...")
-    local success, result = pcall(function()
-        return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
-    end)
-    if success and result then
-        local data = game:GetService("HttpService"):JSONDecode(result).data
-        local possibleServers = {}
-        for _, v in ipairs(data) do
-            if v.playing and v.maxPlayers and v.playing < v.maxPlayers and v.id ~= game.JobId then
-                table.insert(possibleServers, v.id)
+print("-----------------------------------------")
+print("BUCKSHOT DIAGNOSTIC LOADED: " .. os.date("%X"))
+print("-----------------------------------------")
+
+-- [[ 2. THE REPEATABLE CORE ]]
+local function startTurbo()
+    -- STAGE 1: THE MENU CHECK
+    print("LOG: Checking for TitleScreen...")
+    local titleScreen = pGui:WaitForChild("TitleScreen", 15)
+    
+    if titleScreen then
+        print("LOG: TitleScreen object found. Status: " .. tostring(titleScreen.Enabled))
+        local clickCount = 0
+        while titleScreen.Enabled do
+            local playBtn = titleScreen:FindFirstChild("PlayButton")
+            if playBtn then
+                clickCount = clickCount + 1
+                if clickCount % 5 == 0 then print("LOG: Still clicking Play... (Attempt " .. clickCount .. ")") end
+                
+                local pos = playBtn.AbsolutePosition
+                local size = playBtn.AbsoluteSize
+                VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, true, game, 1)
+                task.wait(0.01)
+                VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, false, game, 1)
+                
+                GuiService.SelectedObject = playBtn
+                VIM:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+            else
+                warn("ERROR: TitleScreen exists but PlayButton is MISSING!")
             end
+            task.wait(0.5)
         end
-        if #possibleServers > 0 then
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, possibleServers[math.random(1, #possibleServers)])
-        end
+        print("LOG: TitleScreen successfully cleared.")
+    else
+        warn("LOG: TitleScreen not found after 15s. Skipping to spawn check.")
     end
-end
 
--- [[ 3. MENU HAMMER ]]
-local function clearMenus()
-    local title = pGui:WaitForChild("TitleScreen", 25)
-    while title and title.Parent == pGui do
-        local btn = title:FindFirstChild("PlayButton")
-        if btn and btn.Visible then
-            local pos = btn.AbsolutePosition
-            local size = btn.AbsoluteSize
-            VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, true, game, 1)
-            task.wait(0.05)
-            VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, false, game, 1)
-        end
-        task.wait(0.3)
-    end
-    task.wait(1) 
-end
-
--- [[ 4. THE PERPETUAL SCAN ENGINE ]]
-local function runTurbo()
-    clearMenus()
-
+    -- STAGE 2: THE SPAWN CHECK
+    print("LOG: Waiting for Character Spawning...")
     local char = player.Character or player.CharacterAdded:Wait()
-    local root = char:WaitForChild("HumanoidRootPart", 20)
+    print("LOG: Character detected. Waiting for RootPart...")
+    local root = char:WaitForChild("HumanoidRootPart", 10)
     
-    -- ANTI-STALL WATCHDOG
-    local lastPos = root.Position
-    local lastMoveTick = tick()
+    if not root then
+        warn("ERROR: HumanoidRootPart never appeared! Script may fail.")
+        return
+    end
     
-    task.spawn(function()
-        while task.wait(1) do
-            if not root or not root.Parent then break end
-            local dist = (root.Position - lastPos).Magnitude
-            if dist > 0.5 then
-                lastPos = root.Position
-                lastMoveTick = tick()
-            elseif (tick() - lastMoveTick) > 3 then
-                warn("F9 WARNING: Character stationary for 3s. Hopping.")
-                serverHop()
-                break
-            end
-        end
-    end)
+    print("LOG: Character is physically ready. Waiting 2s for DataLoadScreen safety...")
+    task.wait(2)
 
-    -- CONTINUOUS COLLECTION LOOP
-    while true do
+    -- STAGE 3: THE COLLECTION LOOP
+    print("LOG: Beginning YTP Scan...")
+    local function collect()
         local items = {}
         for _, v in pairs(workspace:GetDescendants()) do
-            if (v.Name:find("YTP") or v.Name:find("YTP_")) and (v:IsA("Model") or v:IsA("BasePart")) then
+            if v.Name:find("YTP") and (v:IsA("Model") or v:IsA("BasePart")) then
                 table.insert(items, v)
             end
         end
+        
+        print("LOG: Found " .. #items .. " potential YTP items.")
+        
+        if #items == 0 then return false end
 
-        -- INSTANT HOP IF NOTHING FOUND
-        if #items == 0 then
-            print("F9 LOG: Workspace scan complete (0 items). Hopping.")
-            serverHop()
-            break
-        end
-
-        -- PROCESS FOUND ITEMS
-        for _, item in ipairs(items) do
-            local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
+        for i, item in ipairs(items) do
+            print("LOG: Collecting Item " .. i .. " [" .. item.Name .. "]")
+            local target = item:IsA("BasePart") and item or item:FindFirstChildWhichIsA("BasePart", true)
             
-            if hitbox and hitbox.Parent and player.Character and root then
-                root.CFrame = hitbox.CFrame * CFrame.new(0, 0, 2.2) 
-                root.Anchored = true
+            if target and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local currentRoot = player.Character.HumanoidRootPart
+                currentRoot.CFrame = target.CFrame
+                currentRoot.Anchored = true
                 
-                local camLock = RS.RenderStepped:Connect(function()
-                    if hitbox and hitbox.Parent then
-                        camera.CFrame = CFrame.lookAt(camera.CFrame.Position, hitbox.Position)
-                    end
-                end)
-                
-                local clickStart = tick()
-                while item.Parent and (tick() - clickStart) < 0.75 do
-                    fireclickdetector(item:FindFirstChildWhichIsA("ClickDetector", true))
-                    
-                    local center = camera.ViewportSize / 2
-                    VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, true, game, 1)
-                    VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, false, game, 1)
-                    
+                local s = tick()
+                while item.Parent and (tick() - s) < 1.0 do
+                    local cd = item:FindFirstChildWhichIsA("ClickDetector", true)
+                    if cd then fireclickdetector(cd) end
                     VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                    task.wait(0.02)
+                    task.wait(0.05)
                 end
-                
-                camLock:Disconnect()
-                root.Anchored = false
-                task.wait(0.02)
+                currentRoot.Anchored = false
+            else
+                warn("LOG: Target or Root lost while collecting item " .. i)
             end
         end
-        
-        task.wait(0.1) -- Short breather before re-scanning the map
+        return true
+    end
+
+    local success = collect()
+    
+    -- STAGE 4: SERVER HOP
+    if not success then
+        warn("LOG: No YTPs found in workspace. Preparing to hop.")
+    else
+        print("LOG: Map cleared. Preparing to hop.")
+    end
+    
+    task.wait(1)
+    print("LOG: Fetching server list...")
+    
+    local hopSuccess, result = pcall(function()
+        return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
+    end)
+    
+    if hopSuccess and result then
+        local data = game:GetService("HttpService"):JSONDecode(result).data
+        for _, v in ipairs(data) do
+            if v.playing < v.maxPlayers and v.id ~= game.JobId then
+                print("LOG: Teleporting to new server: " .. v.id)
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, v.id)
+                return
+            end
+        end
+    else
+        warn("ERROR: Failed to fetch server list. Retrying in 5s.")
+        task.wait(5)
+        startTurbo() -- Recursive retry
     end
 end
 
-task.spawn(runTurbo)
+-- Start the Diagnostic
+task.spawn(startTurbo)

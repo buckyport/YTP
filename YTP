@@ -1,0 +1,144 @@
+local queue_on_teleport = (queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport))
+
+if queue_on_teleport then
+    local scriptSource = [[
+        repeat task.wait() until game:IsLoaded()
+        _G.AutoFarmEnabled = true
+        -- Re-executes the logic below automatically
+        loadstring(game:HttpGet("YOUR_RAW_URL_HERE"))() 
+    ]]
+   
+    queue_on_teleport(scriptSource)
+end
+
+_G.AutoFarmEnabled = true 
+_G.AutoRunOnHop = true 
+
+local player = game.Players.LocalPlayer
+local pGui = player:WaitForChild("PlayerGui")
+local camera = workspace.CurrentCamera
+local VIM = game:GetService("VirtualInputManager")
+local RS = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
+local GuiService = game:GetService("GuiService")
+local TS = game:GetService("TweenService")
+
+if pGui:FindFirstChild("Buckshot") then pGui.Buckshot:Destroy() end
+
+
+local function serverHop()
+    local success, result = pcall(function()
+        return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
+    end)
+    
+    if success and result then
+        local data = game:GetService("HttpService"):JSONDecode(result).data
+        local possibleServers = {}
+        for _, v in ipairs(data) do
+            if v.playing and v.maxPlayers and v.playing < v.maxPlayers and v.id ~= game.JobId then
+                table.insert(possibleServers, v.id)
+            end
+        end
+        if #possibleServers > 0 then
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, possibleServers[math.random(1, #possibleServers)])
+        end
+    end
+end
+
+
+local sg = Instance.new("ScreenGui", pGui)
+sg.Name = "Buckshot"
+sg.ResetOnSpawn = false
+
+local frame = Instance.new("Frame", sg)
+frame.Size = UDim2.new(0, 180, 0, 50)
+frame.Position = UDim2.new(0, 10, 0.5, -25) 
+frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
+local stroke = Instance.new("UIStroke", frame)
+stroke.Color = Color3.fromRGB(0, 255, 100)
+
+local btn = Instance.new("TextButton", frame)
+btn.Size = UDim2.new(1, 0, 1, 0)
+btn.Text = "TURBO ACTIVE"
+btn.TextColor3 = Color3.new(1, 1, 1)
+btn.BackgroundTransparency = 1
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 14
+
+btn.MouseButton1Click:Connect(function()
+    _G.AutoFarmEnabled = not _G.AutoFarmEnabled
+    btn.Text = _G.AutoFarmEnabled and "TURBO ACTIVE" or "BUCKSHOT: OFF"
+    TS:Create(stroke, TweenInfo.new(0.3), {Color = _G.AutoFarmEnabled and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)}):Play()
+end)
+
+
+task.spawn(function()
+    while true do
+        RS.Heartbeat:Wait()
+        
+     
+        if _G.AutoRunOnHop then
+            local mainGui = pGui:FindFirstChild("Main")
+            if mainGui then
+                for _, v in pairs(mainGui:GetDescendants()) do
+                    if v:IsA("TextButton") and v.Visible and (v.Name:find("Play") or v.Text:find("Play")) then
+                        GuiService.SelectedObject = v
+                        VIM:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+                        task.wait(0.05)
+                        VIM:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+                    end
+                end
+            end
+        end
+
+        local char = player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        
+        if _G.AutoFarmEnabled and root then
+            local items = {}
+            for _, v in pairs(workspace:GetDescendants()) do
+                if v.Name:find("YTP_") and (v:IsA("Model") or v:IsA("BasePart")) then
+                    table.insert(items, v)
+                end
+            end
+            
+            if #items > 0 then
+                for _, item in pairs(items) do
+                    if not _G.AutoFarmEnabled then break end
+                    local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart")
+                    
+                    if hitbox and hitbox.Parent then
+                        root.CFrame = hitbox.CFrame
+                        root.Anchored = true 
+                        
+                        local camLock = RS.RenderStepped:Connect(function()
+                            if hitbox and hitbox.Parent then
+                                camera.CFrame = CFrame.lookAt(camera.CFrame.Position, hitbox.Position + Vector3.new(0, 1, 0))
+                            end
+                        end)
+
+                        local clickStart = tick()
+                        while item.Parent and (tick() - clickStart) < 1.0 do
+                            local cd = item:FindFirstChildWhichIsA("ClickDetector", true)
+                            if cd then fireclickdetector(cd) end
+                            
+                            VIM:SendMouseButtonEvent(camera.ViewportSize.X/2, camera.ViewportSize.Y/2, 0, true, game, 1)
+                            VIM:SendMouseButtonEvent(camera.ViewportSize.X/2, camera.ViewportSize.Y/2, 0, false, game, 1)
+                            task.wait() 
+                        end
+
+                        camLock:Disconnect()
+                        root.Anchored = false 
+                    end
+                end
+            else
+                serverHop()
+                task.wait(2) 
+            end
+        end
+    end
+end)

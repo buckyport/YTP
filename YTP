@@ -4,7 +4,6 @@ local queue_on_teleport = (queue_on_teleport or (syn and syn.queue_on_teleport) 
 
 if queue_on_teleport then
     pcall(function()
-        -- Queues this exact script to run again on the next server
         queue_on_teleport('loadstring(game:HttpGet("' .. raw_url .. '"))()')
     end)
 end
@@ -21,38 +20,29 @@ local camera = workspace.CurrentCamera
 -- [[ 2. INFINITE CLICK CHECK (Menu Bypass) ]]
 local function clearMenus()
     print("F9 LOG: Starting Menu Presence Check...")
-    
     local title = pGui:WaitForChild("TitleScreen", 25)
-    
-    -- Keep checking/clicking until TitleScreen is no longer a child of PlayerGui
     while title and title.Parent == pGui do
         local btn = title:FindFirstChild("PlayButton")
-        
         if btn and btn.Visible then
             local pos = btn.AbsolutePosition
             local size = btn.AbsoluteSize
             local clickX, clickY = pos.X + (size.X/2), pos.Y + (size.Y/2) + 36
-            
-            -- Press and release
             VIM:SendMouseButtonEvent(clickX, clickY, 0, true, game, 1)
             task.wait(0.05)
             VIM:SendMouseButtonEvent(clickX, clickY, 0, false, game, 1)
-            
             print("F9 LOG: PlayButton detected and clicked. Checking for menu removal...")
         end
-        
-        task.wait(0.3) -- Faster menu polling
+        task.wait(0.3)
     end
-    
     print("F9 LOG: Menu cleared from screen. Transitioning to game...")
 end
 
 -- [[ 3. TURBO SERVER HOP ]]
 local function serverHop()
-    print("F9 LOG: Collection complete or timeout hit. Entering 1s Hop Loop...")
+    print("F9 LOG: Collection complete or timeout hit. Entering 5s SAFE Hop Loop...")
     
-    -- MODIFIED: Tries to hop every 1 second until it works
-    while task.wait(1) do
+    -- MODIFIED: Set to 5 seconds to bypass Roblox Rate Limits (Error 429)
+    while task.wait(5) do
         local success, result = pcall(function()
             return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
         end)
@@ -69,7 +59,7 @@ local function serverHop()
                 
                 if #possibleServers > 0 then
                     local target = possibleServers[math.random(1, #possibleServers)]
-                    print("F9 LOG: Attempting teleport to Server: " .. target)
+                    print("F9 LOG: Safe Teleport Attempt to Server: " .. target)
                     TeleportService:TeleportToPlaceInstance(game.PlaceId, target)
                 else
                     TeleportService:Teleport(game.PlaceId, player)
@@ -88,10 +78,8 @@ local function runTurbo()
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:WaitForChild("HumanoidRootPart", 20)
 
-    -- Tracking for teleport frequency
     local lastTeleportTick = tick()
 
-    -- Watchdog for teleport timeout
     task.spawn(function()
         while task.wait(0.5) do
             if (tick() - lastTeleportTick) > 3 then
@@ -102,7 +90,6 @@ local function runTurbo()
         end
     end)
 
-    -- Re-check logic
     local function performScan()
         local found = {}
         for _, v in pairs(workspace:GetDescendants()) do
@@ -116,7 +103,6 @@ local function runTurbo()
     local items = performScan()
     if #items == 0 then serverHop() return end
 
-    -- Main Collection Loop
     local function collectAll(list)
         for _, item in ipairs(list) do
             local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
@@ -153,10 +139,8 @@ local function runTurbo()
         end
     end
 
-    -- First pass
     collectAll(items)
     
-    -- Final re-check before hopping
     task.wait(0.1)
     local remaining = performScan()
     if #remaining > 0 then

@@ -19,7 +19,7 @@ local camera = workspace.CurrentCamera
 
 -- [[ 2. TURBO SERVER HOP ]]
 local function serverHop()
-    print("F9 LOG: Server Hopping...")
+    print("F9 LOG: Cycling to new server...")
     local success, result = pcall(function()
         return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
     end)
@@ -45,6 +45,7 @@ local function clearMenus()
         if btn and btn.Visible then
             local pos = btn.AbsolutePosition
             local size = btn.AbsoluteSize
+            -- Direct coordinate click for the Play button
             VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, true, game, 1)
             task.wait(0.05)
             VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, false, game, 1)
@@ -54,35 +55,35 @@ local function clearMenus()
     task.wait(1.5) 
 end
 
--- [[ 4. THE ENGINE ]]
+-- [[ 4. THE PRECISION CLICK ENGINE ]]
 local function runTurbo()
     clearMenus()
 
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:WaitForChild("HumanoidRootPart", 20)
     
-    -- ANTI-STALL WATCHDOG: Server hop if standing still for 3 seconds
+    -- ANTI-STALL WATCHDOG: 3 Seconds Still = Hop
     local lastPos = root.Position
     local lastMoveTick = tick()
     
     task.spawn(function()
         while task.wait(1) do
+            if not root or not root.Parent then break end
             local currentPos = root.Position
-            -- Checking X and Z distance to ignore slight gravity/Y-axis bobbing
             local dist = (Vector3.new(currentPos.X, 0, currentPos.Z) - Vector3.new(lastPos.X, 0, lastPos.Z)).Magnitude
             
             if dist > 0.5 then
                 lastPos = currentPos
                 lastMoveTick = tick()
             elseif (tick() - lastMoveTick) >= 3 then
-                print("F9 LOG: Stationary for 3s. Hopping.")
+                warn("F9 WARNING: Stalled. Hopping.")
                 serverHop()
                 break
             end
         end
     end)
 
-    -- INSTANT SCAN
+    -- MAP SCAN
     local items = {}
     for _, v in pairs(workspace:GetDescendants()) do
         if (v.Name:find("YTP") or v.Name:find("YTP_")) and (v:IsA("Model") or v:IsA("BasePart")) then
@@ -92,33 +93,38 @@ local function runTurbo()
 
     if #items == 0 then serverHop() return end
 
-    -- FAST COLLECTION LOOP
+    -- COLLECTION
     for _, item in ipairs(items) do
-        local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
+        local targetPart = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
         
-        if hitbox and player.Character and root then
-            root.CFrame = hitbox.CFrame * CFrame.new(0, 0, 2.2) 
+        if targetPart and targetPart.Parent and player.Character and root then
+            -- 1. SNAP ALIGNMENT (Guarantees the "Center Click" hits)
+            root.CFrame = targetPart.CFrame * CFrame.new(0, 0, 2.2)
             root.Anchored = true
             
-            local camLock = RS.RenderStepped:Connect(function()
-                if hitbox and hitbox.Parent then
-                    camera.CFrame = CFrame.lookAt(camera.CFrame.Position, hitbox.Position)
-                end
-            end)
+            -- Snap camera and character to look directly at target
+            camera.CFrame = CFrame.new(camera.CFrame.Position, targetPart.Position)
+            root.CFrame = CFrame.new(root.Position, Vector3.new(targetPart.Position.X, root.Position.Y, targetPart.Position.Z))
             
+            task.wait(0.1) -- Quick focus delay
+            
+            -- 2. AGGRESSIVE CLICK & INTERACT
             local clickStart = tick()
             while item.Parent and (tick() - clickStart) < 0.8 do
+                -- Trigger ClickDetector directly
                 fireclickdetector(item:FindFirstChildWhichIsA("ClickDetector", true))
                 
+                -- Trigger Screen-Center Click (using VIM)
                 local center = camera.ViewportSize / 2
                 VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, true, game, 1)
+                task.wait(0.01)
                 VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, false, game, 1)
                 
+                -- Trigger Proximity Key
                 VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                task.wait(0.03)
+                task.wait(0.03) 
             end
             
-            camLock:Disconnect()
             root.Anchored = false
             task.wait(0.05)
         end

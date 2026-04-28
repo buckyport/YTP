@@ -19,7 +19,7 @@ local camera = workspace.CurrentCamera
 
 -- [[ 2. TURBO SERVER HOP ]]
 local function serverHop()
-    print("F9 LOG: Sweep complete or stall detected. Hopping.")
+    print("F9 LOG: Triggering Instant Hop...")
     local success, result = pcall(function()
         return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
     end)
@@ -54,34 +54,39 @@ local function clearMenus()
     task.wait(1.5) 
 end
 
--- [[ 4. THE FULL SWEEP & CLICK ENGINE ]]
+-- [[ 4. THE HIGH-VELOCITY ENGINE ]]
 local function runTurbo()
     clearMenus()
 
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:WaitForChild("HumanoidRootPart", 20)
     
-    -- ANTI-STALL WATCHDOG: 3s Still = Hop
+    -- STALL TRACKING VARIABLES
     local lastPos = root.Position
-    local lastMoveTick = tick()
+    local lastActionTick = tick()
     
+    -- WATCHDOG SPAWN
     task.spawn(function()
-        while task.wait(1) do
-            if not root or not root.Parent then break end
+        while task.wait(0.5) do
             local currentPos = root.Position
-            local dist = (Vector3.new(currentPos.X, 0, currentPos.Z) - Vector3.new(lastPos.X, 0, lastPos.Z)).Magnitude
+            local dist = (currentPos - lastPos).Magnitude
             
-            if dist > 0.5 then
+            -- If we moved or successfully interacted, reset the timer
+            if dist > 1 then
                 lastPos = currentPos
-                lastMoveTick = tick()
-            elseif (tick() - lastMoveTick) >= 3 then
+                lastActionTick = tick()
+            end
+
+            -- 3 SECOND CHECK (Covers standing still OR not reaching new YTP)
+            if (tick() - lastActionTick) > 3 then
+                warn("F9 WARNING: Stalled/Stuck for 3s. Force Hopping.")
                 serverHop()
                 break
             end
         end
     end)
 
-    -- 1. IDENTIFY ALL TARGETS ON MAP
+    -- INSTANT SCAN
     local items = {}
     for _, v in pairs(workspace:GetDescendants()) do
         if (v.Name:find("YTP") or v.Name:find("YTP_")) and (v:IsA("Model") or v:IsA("BasePart")) then
@@ -91,44 +96,42 @@ local function runTurbo()
 
     if #items == 0 then serverHop() return end
 
-    -- 2. ITERATE AND COLLECT ALL
+    -- FAST COLLECTION LOOP
     for _, item in ipairs(items) do
-        local targetPart = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
+        local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
         
-        if targetPart and targetPart.Parent and player.Character and root then
-            -- PRECISION ALIGNMENT
-            root.CFrame = targetPart.CFrame * CFrame.new(0, 0, 2.2)
+        if hitbox and player.Character and root then
+            -- Reset action tick upon starting a new teleport/collection
+            lastActionTick = tick()
+            
+            root.CFrame = hitbox.CFrame * CFrame.new(0, 0, 2.2) 
             root.Anchored = true
             
-            -- HARD AIM ASSIST SNAP
-            camera.CFrame = CFrame.new(camera.CFrame.Position, targetPart.Position)
-            root.CFrame = CFrame.new(root.Position, Vector3.new(targetPart.Position.X, root.Position.Y, targetPart.Position.Z))
+            local camLock = RS.RenderStepped:Connect(function()
+                if hitbox and hitbox.Parent then
+                    camera.CFrame = CFrame.lookAt(camera.CFrame.Position, hitbox.Position)
+                end
+            end)
             
-            task.wait(0.15) -- Focus buffer to ensure click lands
-            
-            -- AGGRESSIVE INTERACTION WINDOW
             local clickStart = tick()
-            while item.Parent and (tick() - clickStart) < 1.0 do
-                -- Direct Script Interaction
+            while item.Parent and (tick() - clickStart) < 0.8 do
                 fireclickdetector(item:FindFirstChildWhichIsA("ClickDetector", true))
                 
-                -- Virtual Input Mouse Click (Center Viewport)
                 local center = camera.ViewportSize / 2
                 VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, true, game, 1)
-                task.wait(0.01)
                 VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, false, game, 1)
                 
-                -- Virtual Input Key Interaction
                 VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                task.wait(0.04) 
+                task.wait(0.03)
             end
             
+            camLock:Disconnect()
             root.Anchored = false
-            task.wait(0.05) -- Minor cooldown for character sync
+            lastPos = root.Position -- Update position after anchoring release
+            task.wait(0.05)
         end
     end
     
-    -- 3. FINAL HOP AFTER ALL ITEMS IN LIST ARE PROCESSED
     serverHop()
 end
 

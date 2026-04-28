@@ -8,7 +8,8 @@ if queue_on_teleport then
     end)
 end
 
-repeat task.wait() until game:IsLoaded()
+-- Wait for the engine to actually put you in a server
+if not game:IsLoaded() then game.Loaded:Wait() end
 
 local player = game.Players.LocalPlayer
 local pGui = player:WaitForChild("PlayerGui")
@@ -17,39 +18,41 @@ local TeleportService = game:GetService("TeleportService")
 local RS = game:GetService("RunService")
 local camera = workspace.CurrentCamera
 
--- [[ 2. AGGRESSIVE MENU BYPASS ]]
+-- [[ 2. THE MENU-GATE BYPASS ]]
 local function clearMenus()
-    if pGui:FindFirstChild("Buckshot") then pGui.Buckshot:Destroy() end
+    print("F9 LOG: Attempting Menu Bypass...")
     
-    print("F9 LOG: Engaging Menu Bypass...")
-    
-    local title = pGui:WaitForChild("TitleScreen", 20)
+    -- 1. Ensure the TitleScreen is actually there before trying anything
+    local title = pGui:WaitForChild("TitleScreen", 30)
     local btn = title and title:FindFirstChild("PlayButton")
     
-    if btn then
+    if title and btn then
         local pos = btn.AbsolutePosition
         local size = btn.AbsoluteSize
         local clickX, clickY = pos.X + (size.X/2), pos.Y + (size.Y/2) + 36
         
-        -- KEEP CLICKING UNTIL THE MENU IS GONE
+        -- 2. AGGRESSIVE CLICKING: Keep clicking until the button is no longer visible
         local clickTimeout = tick()
-        repeat
+        while btn.Visible and (tick() - clickTimeout) < 15 do
             VIM:SendMouseButtonEvent(clickX, clickY, 0, true, game, 1)
             task.wait(0.05)
             VIM:SendMouseButtonEvent(clickX, clickY, 0, false, game, 1)
             
-            print("F9 LOG: Clicking PlayButton... (Waiting for UI to clear)")
-            task.wait(0.5) -- Half-second intervals to allow for load lag
-        until not title.Parent or not btn.Visible or (tick() - clickTimeout) > 10
+            print("F9 LOG: Clicking Play... waiting for menu to disappear.")
+            task.wait(0.5) 
+        end
         
-        print("F9 LOG: Menu cleared. Waiting for character physics...")
-        task.wait(3) -- Extra buffer to let the screen fade out completely
+        -- 3. THE "STUCK" CHECK: Wait specifically for the TitleScreen to be gone
+        local uiClearWait = tick()
+        while title.Parent == pGui and (tick() - uiClearWait) < 10 do
+            task.wait(0.5)
+            print("F9 LOG: Menu still mounted. Waiting...")
+        end
     end
 end
 
 -- [[ 3. TURBO SERVER HOP ]]
 local function serverHop()
-    print("F9 LOG: Map clear. Hopping to new server...")
     local success, result = pcall(function()
         return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
     end)
@@ -69,13 +72,18 @@ end
 
 -- [[ 4. THE CLEAN SWEEP ENGINE ]]
 local function runTurbo()
+    -- BLOCK 1: Clear Menu
     clearMenus()
 
+    -- BLOCK 2: Wait for Character + Physics stability
+    print("F9 LOG: Waiting for physical spawn...")
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:WaitForChild("HumanoidRootPart", 20)
     
-    task.wait(2) -- Final sync buffer
+    -- Extra 3 seconds to ensure the game has finished loading the map and character type
+    task.wait(3) 
 
+    print("F9 LOG: Physics synced. Scanning for YTP...")
     local items = {}
     for _, v in pairs(workspace:GetDescendants()) do
         if (v.Name:find("YTP") or v.Name:find("YTP_")) and (v:IsA("Model") or v:IsA("BasePart")) then
@@ -83,8 +91,13 @@ local function runTurbo()
         end
     end
 
-    if #items == 0 then serverHop() return end
+    if #items == 0 then 
+        print("F9 LOG: Server empty. Hopping.")
+        serverHop() 
+        return 
+    end
 
+    -- BLOCK 3: Collection
     for _, item in ipairs(items) do
         local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
         
@@ -116,6 +129,7 @@ local function runTurbo()
             hrp.Anchored = false
         end
     end
+    
     serverHop()
 end
 

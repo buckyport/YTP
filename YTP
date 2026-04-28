@@ -4,7 +4,6 @@ local queue_on_teleport = (queue_on_teleport or (syn and syn.queue_on_teleport) 
 
 if queue_on_teleport then
     pcall(function()
-        -- Queues this exact script to run again on the next server
         queue_on_teleport('loadstring(game:HttpGet("' .. raw_url .. '"))()')
     end)
 end
@@ -18,39 +17,9 @@ local TeleportService = game:GetService("TeleportService")
 local RS = game:GetService("RunService")
 local camera = workspace.CurrentCamera
 
--- [[ 2. INFINITE CLICK CHECK (Menu Bypass) ]]
-local function clearMenus()
-    print("F9 LOG: Starting Menu Presence Check...")
-    
-    local title = pGui:WaitForChild("TitleScreen", 25)
-    
-    -- Keep checking/clicking until TitleScreen is no longer a child of PlayerGui
-    while title and title.Parent == pGui do
-        local btn = title:FindFirstChild("PlayButton")
-        
-        if btn and btn.Visible then
-            local pos = btn.AbsolutePosition
-            local size = btn.AbsoluteSize
-            local clickX, clickY = pos.X + (size.X/2), pos.Y + (size.Y/2) + 36
-            
-            -- Press and release
-            VIM:SendMouseButtonEvent(clickX, clickY, 0, true, game, 1)
-            task.wait(0.05)
-            VIM:SendMouseButtonEvent(clickX, clickY, 0, false, game, 1)
-            
-            print("F9 LOG: PlayButton detected and clicked. Checking for menu removal...")
-        end
-        
-        task.wait(0.5) -- Check every half-second to prevent crashing
-    end
-    
-    print("F9 LOG: Menu cleared from screen. Transitioning to game...")
-    task.wait(2) -- Buffer for character physics to stabilize
-end
-
--- [[ 3. TURBO SERVER HOP ]]
+-- [[ 2. TURBO SERVER HOP ]]
 local function serverHop()
-    print("F9 LOG: Sweep finished. Hopping...")
+    print("F9 LOG: No items found or stalled. Finding new server...")
     local success, result = pcall(function()
         return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
     end)
@@ -68,60 +37,99 @@ local function serverHop()
     end
 end
 
--- [[ 4. THE CLEAN SWEEP ENGINE ]]
+-- [[ 3. MENU HAMMER ]]
+local function clearMenus()
+    local title = pGui:WaitForChild("TitleScreen", 25)
+    while title and title.Parent == pGui do
+        local btn = title:FindFirstChild("PlayButton")
+        if btn and btn.Visible then
+            local pos = btn.AbsolutePosition
+            local size = btn.AbsoluteSize
+            VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, true, game, 1)
+            task.wait(0.05)
+            VIM:SendMouseButtonEvent(pos.X + (size.X/2), pos.Y + (size.Y/2) + 36, 0, false, game, 1)
+        end
+        task.wait(0.3)
+    end
+    task.wait(1) 
+end
+
+-- [[ 4. THE PERPETUAL SCAN ENGINE ]]
 local function runTurbo()
-    -- Step 1: Hammer the Play button until it's gone
     clearMenus()
 
-    -- Step 2: Ensure character is physically spawned
     local char = player.Character or player.CharacterAdded:Wait()
     local root = char:WaitForChild("HumanoidRootPart", 20)
-    task.wait(2) 
-
-    -- Step 3: Scan and Collect
-    local items = {}
-    for _, v in pairs(workspace:GetDescendants()) do
-        if (v.Name:find("YTP") or v.Name:find("YTP_")) and (v:IsA("Model") or v:IsA("BasePart")) then
-            table.insert(items, v)
-        end
-    end
-
-    if #items == 0 then serverHop() return end
-
-    for _, item in ipairs(items) do
-        local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
-        
-        if hitbox and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = player.Character.HumanoidRootPart
-            hrp.CFrame = hitbox.CFrame * CFrame.new(0, 0, 2.5) 
-            hrp.Anchored = true
-            
-            local camLock = RS.RenderStepped:Connect(function()
-                if hitbox and hitbox.Parent then
-                    camera.CFrame = CFrame.lookAt(camera.CFrame.Position, hitbox.Position)
-                end
-            end)
-            
-            local clickStart = tick()
-            while item.Parent and (tick() - clickStart) < 1.5 do
-                local cd = item:FindFirstChildWhichIsA("ClickDetector", true)
-                if cd then fireclickdetector(cd) end
-                
-                local center = camera.ViewportSize / 2
-                VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, true, game, 1)
-                task.wait(0.01)
-                VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, false, game, 1)
-                
-                VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                task.wait(0.05)
-            end
-            camLock:Disconnect()
-            hrp.Anchored = false
-        end
-    end
     
-    -- Step 4: Loop back to a new server
-    serverHop()
+    -- ANTI-STALL WATCHDOG
+    local lastPos = root.Position
+    local lastMoveTick = tick()
+    
+    task.spawn(function()
+        while task.wait(1) do
+            if not root or not root.Parent then break end
+            local dist = (root.Position - lastPos).Magnitude
+            if dist > 0.5 then
+                lastPos = root.Position
+                lastMoveTick = tick()
+            elseif (tick() - lastMoveTick) > 3 then
+                warn("F9 WARNING: Character stationary for 3s. Hopping.")
+                serverHop()
+                break
+            end
+        end
+    end)
+
+    -- CONTINUOUS COLLECTION LOOP
+    while true do
+        local items = {}
+        for _, v in pairs(workspace:GetDescendants()) do
+            if (v.Name:find("YTP") or v.Name:find("YTP_")) and (v:IsA("Model") or v:IsA("BasePart")) then
+                table.insert(items, v)
+            end
+        end
+
+        -- INSTANT HOP IF NOTHING FOUND
+        if #items == 0 then
+            print("F9 LOG: Workspace scan complete (0 items). Hopping.")
+            serverHop()
+            break
+        end
+
+        -- PROCESS FOUND ITEMS
+        for _, item in ipairs(items) do
+            local hitbox = item:FindFirstChild("InteractionHitbox") or item:FindFirstChildWhichIsA("BasePart", true) or (item:IsA("BasePart") and item)
+            
+            if hitbox and hitbox.Parent and player.Character and root then
+                root.CFrame = hitbox.CFrame * CFrame.new(0, 0, 2.2) 
+                root.Anchored = true
+                
+                local camLock = RS.RenderStepped:Connect(function()
+                    if hitbox and hitbox.Parent then
+                        camera.CFrame = CFrame.lookAt(camera.CFrame.Position, hitbox.Position)
+                    end
+                end)
+                
+                local clickStart = tick()
+                while item.Parent and (tick() - clickStart) < 0.75 do
+                    fireclickdetector(item:FindFirstChildWhichIsA("ClickDetector", true))
+                    
+                    local center = camera.ViewportSize / 2
+                    VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, true, game, 1)
+                    VIM:SendMouseButtonEvent(center.X, center.Y + 36, 0, false, game, 1)
+                    
+                    VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                    task.wait(0.02)
+                end
+                
+                camLock:Disconnect()
+                root.Anchored = false
+                task.wait(0.02)
+            end
+        end
+        
+        task.wait(0.1) -- Short breather before re-scanning the map
+    end
 end
 
 task.spawn(runTurbo)

@@ -49,10 +49,10 @@ end
 
 -- [[ 3. TURBO SERVER HOP ]]
 local function serverHop()
-    print("F9 LOG: Collection complete or timeout hit. Entering 3s Hop Loop...")
+    print("F9 LOG: Collection complete or timeout hit. Entering 1s Hop Loop...")
     
-    -- MODIFIED: Tries to hop every 3 seconds until it works
-    while task.wait(3) do
+    -- MODIFIED: Tries to hop every 1 second until it works
+    while task.wait(1) do
         local success, result = pcall(function()
             return game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100")
         end)
@@ -102,7 +102,7 @@ local function runTurbo()
         end
     end)
 
-    -- MODIFIED: Added Re-check logic
+    -- Re-check logic
     local function performScan()
         local found = {}
         for _, v in pairs(workspace:GetDescendants()) do
@@ -156,7 +156,7 @@ local function runTurbo()
     -- First pass
     collectAll(items)
     
-    -- MODIFIED: Final re-check before hopping
+    -- Final re-check before hopping
     task.wait(0.1)
     local remaining = performScan()
     if #remaining > 0 then
